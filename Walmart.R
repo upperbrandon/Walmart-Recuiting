@@ -5,6 +5,12 @@
 library(vroom)
 library(dplyr)
 library(corrplot)
+library(recipes)
+library(embed)
+library(discrim)
+library(tidyverse)
+library(workflows)
+library(tidymodels)
 
 # Reading In --------------------------------------------------------------
 
@@ -39,7 +45,108 @@ joined_test <- left_join(
 head(joined_train) 
 head(joined_test)
 
-# Store Train -------------------------------------------------------------
+
+
+# 3 ML Tests --------------------------------------------------------------
+
+# Recipe
+
+Walmart_Recipe <- recipe(Weekly_Sales ~ ., data = joined_train) %>%
+  step_other(all_nominal_predictors(), threshold = 0.01) %>%
+  step_lencode(all_nominal_predictors(), outcome = vars(Weekly_Sales), smooth = FALSE) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+
+
+# Specific Samples ----------------------------------------------------------
+
+Sample1 <- filter(joined_train, Store == 2 & Dept == 1)
+Sample2 <- filter(joined_train, Store == 19 & Dept == 33)
+Sample3 <- filter(joined_train, Store == 41 & Dept == 60)
+
+# Random Forests
+
+rf_mod <- rand_forest(
+  mtry  = tune(),
+  min_n = tune(),
+  trees = 100
+) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+rf_wf <- workflow() %>%
+  add_recipe(Walmart_Recipe) %>%
+  add_model(rf_mod)
+
+folds <- vfold_cv(Sample3, v = 5)
+
+rf_tuned <- tune_grid(
+  rf_wf,
+  resamples = folds,
+  metrics = metric_set(rmse)
+)
+
+rf_best <- select_best(rf_tuned, metric = "rmse")
+
+cv_results <- collect_metrics(rf_tuned) %>%
+  filter(mtry == rf_best$mtry, min_n == rf_best$min_n)
+
+cv_results %>%
+  select(.metric, mean, std_err)
+
+
+
+# Linear Reg --------------------------------------------------------------
+
+lin_mod <- linear_reg() %>%
+  set_engine("lm") %>%
+  set_mode("regression")
+
+lin_wf <- workflow() %>%
+  add_recipe(Walmart_Recipe) %>%
+  add_model(lin_mod)
+
+folds <- vfold_cv(Sample3, v = 5)
+
+lin_cv <- fit_resamples(
+  lin_wf,
+  resamples = folds,
+  metrics = metric_set(rmse),
+  control = control_resamples(save_pred = TRUE)
+)
+
+lin_results <- collect_metrics(lin_cv)
+
+lin_results
+
+
+# KNN ---------------------------------------------
+
+knn_mod <- nearest_neighbor(
+  neighbors = tune(),
+  weight_func = tune()
+) %>%
+  set_engine("kknn") %>%
+  set_mode("regression")
+
+knn_wf <- workflow() %>%
+  add_recipe(Walmart_Recipe) %>%
+  add_model(knn_mod)
+
+knn_tuned <- tune_grid(
+  knn_wf,
+  resamples = folds,
+  grid = 20,
+  metrics = metric_set(rmse)
+)
+
+collect_metrics(knn_tuned)
+
+
+
+
+# EDA -------------------------------------------------------------
 
 colnames(Train)
 colnames(Store_list)
@@ -56,7 +163,6 @@ table(pull(Train,Store))
 table(pull(Test,Store))
 
 head(Features)
-sum(is.na(pull(Features,MarkDown1)))/length((pull(Features,MarkDown1)))
 
 numeric_cols <- Features %>% select(where(is.numeric))
 cor_matrix <- cor(numeric_cols, use = "complete.obs")
