@@ -11,7 +11,8 @@ library(discrim)
 library(tidyverse)
 library(workflows)
 library(tidymodels)
-
+library(prophet)
+library(patchwork)
 # Reading In --------------------------------------------------------------
 
 setwd("~/GitHub/Walmart-Recuiting")
@@ -145,7 +146,105 @@ collect_metrics(knn_tuned)
 
 
 
+# Choose Store and Dept
+store <- 19   
+dept  <- 33
 
+# Filter and rename columns to Prophet format
+sd_train <- joined_train %>%
+  filter(Store == store, Dept == dept) %>%
+  rename(y = Weekly_Sales, ds = Date)
+
+sd_test <- joined_test %>%
+  filter(Store == store, Dept == dept) %>%
+  rename(ds = Date)
+
+# Fit Prophet model
+prophet_model <- prophet() %>%
+  add_regressor("Fuel_Price") %>%
+  add_regressor("Temperature") %>%
+  add_regressor("MarkdownTotal") %>%
+  fit.prophet(df = sd_train)
+
+# Predict on train and test
+fitted_vals <- predict(prophet_model, sd_train)   # Fitted values
+test_preds  <- predict(prophet_model, sd_test)    # Forecast values
+
+# Plot fitted + forecast
+H <- ggplot() +
+  geom_line(data = sd_train,
+            aes(x = ds, y = y, color = "Data")) +
+  
+  geom_line(data = fitted_vals,
+            aes(x = as.Date(ds), y = yhat, color = "Fitted")) +
+  
+  geom_line(data = test_preds,
+            aes(x = as.Date(ds), y = yhat, color = "Forecast")) +
+  
+  scale_color_manual(values = c(
+    "Data" = "black",
+    "Fitted" = "blue",
+    "Forecast" = "red"
+  )) +
+  
+  labs(color = "",
+       x = "Date",
+       y = "Weekly Sales",
+       title = paste0("Prophet Model: Store ", store,
+                      ", Dept ", dept)) +
+  
+  theme_minimal()
+
+# Choose Store and Dept
+store <- 41   
+dept  <- 60
+
+# Filter and rename columns to Prophet format
+sd_train <- joined_train %>%
+  filter(Store == store, Dept == dept) %>%
+  rename(y = Weekly_Sales, ds = Date)
+
+sd_test <- joined_test %>%
+  filter(Store == store, Dept == dept) %>%
+  rename(ds = Date)
+
+# Fit Prophet model
+prophet_model <- prophet() %>%
+  add_regressor("Fuel_Price") %>%
+  add_regressor("Temperature") %>%
+  add_regressor("MarkdownTotal") %>%
+  fit.prophet(df = sd_train)
+
+# Predict on train and test
+fitted_vals <- predict(prophet_model, sd_train)   # Fitted values
+test_preds  <- predict(prophet_model, sd_test)    # Forecast values
+
+# Plot fitted + forecast
+I <- ggplot() +
+  geom_line(data = sd_train,
+            aes(x = ds, y = y, color = "Data")) +
+  
+  geom_line(data = fitted_vals,
+            aes(x = as.Date(ds), y = yhat, color = "Fitted")) +
+  
+  geom_line(data = test_preds,
+            aes(x = as.Date(ds), y = yhat, color = "Forecast")) +
+  
+  scale_color_manual(values = c(
+    "Data" = "black",
+    "Fitted" = "blue",
+    "Forecast" = "red"
+  )) +
+  
+  labs(color = "",
+       x = "Date",
+       y = "Weekly Sales",
+       title = paste0("Prophet Model: Store ", store,
+                      ", Dept ", dept)) +
+  
+  theme_minimal()
+
+H+I
 # EDA -------------------------------------------------------------
 
 colnames(Train)
